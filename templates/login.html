@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login - BookGenie</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="auth-wrapper">
+    <div class="auth-card">
+        <h2>Welcome Back 👋</h2>
+        <p class="auth-sub">Login to continue exploring books</p>
+
+        <form method="POST">
+            <input type="email" name="email" placeholder="Email Address" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit" class="auth-btn">Login</button>
+        </form>
+
+        <div class="auth-switch">
+            Don't have an account? <a href="/signup">Create one</a>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

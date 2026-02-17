@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ book['title'] }} | BookGenie</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body style="background-color: #f9f9fb;">
+
+    <nav class="glass-nav">
+        <div class="nav-content">
+            <a href="/" class="logo" style="text-decoration: none;">✨ Book<span>Genie</span></a>
+            <div class="nav-actions">
+                <button onclick="window.location.href='/'" class="login-pill" style="background: #6c5ce7;">
+                    ← Back to Shop
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-container">
+        <div class="product-details-card">
+            <div class="product-visual">
+                <img src="{{ book['image_url_l'] }}" alt="{{ book['title'] }}" onerror="this.src='https://via.placeholder.com/300x450?text=No+Cover+Found'">
+            </div>
+
+            <div class="product-content">
+                <span class="tag">Premium Collection</span>
+                <h1 class="detail-title">{{ book['title'] }}</h1>
+                <p class="detail-author">By <strong>{{ book['author'] }}</strong></p>
+
+                <div class="detail-rating">
+                    ⭐⭐⭐⭐☆ <span>(4.5/5 Based on 120+ reviews)</span>
+                </div>
+
+                <div class="detail-price-row">
+                    <span class="price">₹{{ book['price'] if book['price'] else '449' }}</span>
+                    <span class="old-price">₹{{ (book['price']|int * 2) if book['price'] else '899' }}</span>
+                    <span class="discount-badge">50% OFF</span>
+                </div>
+
+                <div class="book-meta">
+                    <p><strong>ISBN:</strong> {{ book['isbn'] }}</p>
+                    <p><strong>Publisher:</strong> {{ book['publisher'] }}</p>
+                    <p><strong>Year:</strong> {{ book['year'] }}</p>
+                </div>
+
+                <div class="detail-actions">
+                    <button class="add-btn-large" onclick="addToCart()">Add to Cart 🛒</button>
+                    <button class="wishlist-btn">Wishlist ❤️</button>
+                </div>
+
+                <div class="trust-badges">
+                    <div class="badge-item">🚚 Free Delivery</div>
+                    <div class="badge-item">🛡️ Secure Payment</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="premium-footer">
+        <div class="footer-grid">
+            <div class="footer-brand">
+                <div class="logo">✨ Book<span>Genie</span></div>
+                <p>Bringing the world's best stories to your doorstep. Your ultimate reading companion.</p>
+                <div class="social-icons">
+                    <a href="#" title="Instagram">📸</a>
+                    <a href="#" title="Twitter">🐦</a>
+                    <a href="#" title="Facebook">📘</a>
+                </div>
+            </div>
+
+            <div class="footer-links">
+                <h4>Quick Links</h4>
+                <a href="/">Browse Books</a>
+                <a href="#">Track Order</a>
+                <a href="#">Help Center</a>
+            </div>
+
+            <div class="footer-contact">
+                <h4>Support</h4>
+                <p>📧 support@bookgenie.com</p>
+                <p>📍 Mumbai, Maharashtra, India</p>
+                <div class="payment-methods">
+                    <span class="pay-tag">UPI</span>
+                    <span class="pay-tag">VISA</span>
+                    <span class="pay-tag">RuPay</span>
+                </div>
+            </div>
+        </div>
+        <div class="footer-legal">
+            &copy; 2026 BookGenie Store | Crafted with ❤️ for Readers ✨
+        </div>
+    </footer>
+
+    <div id="chatbot-launcher" class="chatbot-bubble" onclick="toggleChat()">
+        <span class="bot-icon">✨</span>
+    </div>
+
+    <div id="chatbot-container" class="chatbot-window">
+        <div class="chatbot-header">
+            <div class="bot-info">
+                <span class="bot-avatar">✨</span>
+                <div>
+                    <h4>BookGenie Bot</h4>
+                    <p>Always online</p>
+                </div>
+            </div>
+            <button class="close-chat" onclick="toggleChat()">×</button>
+        </div>
+        <div id="chat-body" class="chatbot-body">
+            <div class="message bot">
+                Hello! I see you are interested in <b>{{ book['title'] }}</b>. It's a fantastic choice! Price is only ₹{{ book['price'] if book['price'] else '449' }}. How can I help?
+            </div>
+        </div>
+        <div class="chatbot-footer">
+            <input type="text" id="chatInput" placeholder="Ask me anything..." onkeypress="handleChatKey(event)">
+            <button onclick="sendMessage()">🚀</button>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

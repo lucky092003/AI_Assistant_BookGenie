@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BookGenie | Your Reading Companion</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+
+<!-- NAVBAR -->
+<nav class="glass-nav">
+    <div class="nav-content">
+        <a href="/" class="logo">✨ Book<span>Genie</span></a>
+
+        <form action="/search" method="GET" class="search-container">
+            <input type="text" name="q" placeholder="Search for your next adventure..."
+                   value="{{ request.args.get('q', '') }}">
+            <button type="submit">🔍</button>
+        </form>
+
+        <div class="nav-actions">
+
+            <!-- CART BUTTON -->
+            <div class="cart-btn" onclick="window.location.href='/cart'">
+                🛒 <span id="cartCount">0</span>
+            </div>
+
+            {% if session.get("user") %}
+                <div class="user-pill">👋 Hi, {{ session["user"] }}</div>
+                <a href="/logout" class="login-pill">Logout</a>
+            {% else %}
+                <a href="/login" class="login-pill">Login</a>
+                <a href="/signup" class="signup-pill">Signup</a>
+            {% endif %}
+
+        </div>
+    </div>
+</nav>
+
+<!-- HERO SECTION -->
+<header class="hero-section">
+    <div class="hero-content">
+
+        <div class="hero-text">
+            <h1>Wish for a Book,<br><span>Genie</span> Delivers.</h1>
+            <p>Curated collections of stories that spark magic in your everyday life.</p>
+        </div>
+
+        <div class="hero-card">
+            <h3>Find Your Perfect Book</h3>
+
+            <div class="filter-group">
+                <label>Book Title</label>
+                <input type="text" id="filterTitle" placeholder="Enter title..." oninput="dynamicFilter()">
+            </div>
+
+            <div class="filter-group">
+                <label>Author</label>
+                <input type="text" id="filterAuthor" placeholder="Enter author..." oninput="dynamicFilter()">
+            </div>
+
+            <div class="filter-group">
+                <label>Year</label>
+                <input type="text" id="filterYear" placeholder="e.g. 2002" oninput="dynamicFilter()">
+            </div>
+
+            <div class="filter-group">
+                <label>Publisher</label>
+                <input type="text" id="filterPublisher" placeholder="Enter publisher..." oninput="dynamicFilter()">
+            </div>
+
+        </div>
+    </div>
+</header>
+
+<!-- MAIN -->
+<main>
+    <div class="grid-header">
+        <h2>Handpicked for You</h2>
+    </div>
+
+    <div class="book-grid" id="bookContainer">
+        {% for book in books %}
+        <div class="book-card">
+            <div class="card-media">
+                <a href="/book/{{ book.isbn }}">
+                    <img src="{{ book.image_url_m }}"
+                         onerror="this.src='https://via.placeholder.com/200x300?text=No+Cover'"
+                         alt="{{ book.title }}">
+                </a>
+            </div>
+
+            <div class="card-info">
+                <span class="tag">Bestseller</span>
+
+                <h3 class="book-title">
+                    <a href="/book/{{ book.isbn }}">
+                        {{ book.title }}
+                    </a>
+                </h3>
+
+                <p class="author">{{ book.author }}</p>
+
+                <div class="price-row">
+                    <span class="price">₹{{ book.price if book.price else 449 }}</span>
+                    <button class="add-btn"
+                        onclick="addToCart(
+                            '{{ book.title|escape }}',
+                            '{{ book.author|escape }}',
+                            '{{ book.price if book.price else 449 }}'
+                        )">
+                        Add +
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</main>
+
+<!-- FOOTER -->
+<footer class="premium-footer">
+    <div class="footer-grid">
+        <div>
+            <h3>✨ Book<span>Genie</span></h3>
+            <p>Your ultimate reading companion.</p>
+        </div>
+        <div>
+            <h4>Quick Links</h4>
+            <a href="#">Best Sellers</a>
+            <a href="/privacy">Privacy Policy</a>
+        </div>
+        <div>
+            <h4>Contact</h4>
+            <p>support@bookgenie.com</p>
+        </div>
+    </div>
+    <div class="footer-legal">
+        © 2026 BookGenie Store
+    </div>
+</footer>
+
+<!-- AI Assistant Bubble -->
+<div id="chatbot-launcher" class="chatbot-bubble" onclick="toggleChat()">✨</div>
+
+<!-- AI Assistant Window -->
+<div id="chatbot-container" class="chatbot-window">
+    <div class="chatbot-header">
+        <h4>BookGenie AI Assistant</h4>
+        <button onclick="toggleChat()">×</button>
+    </div>
+
+    <div id="chat-body" class="chatbot-body">
+        <div class="message bot">
+            Hello,Welcome to our live chat! Log in if you have an account, or provide your details 🎤
+        </div>
+    </div>
+
+    <div class="chatbot-footer">
+        <input type="text" id="chatInput" placeholder="Ask me anything..."
+               onkeypress="if(event.key === 'Enter') sendMessage()">
+        <button onclick="sendMessage()">Send</button>
+        <button onclick="startVoice()" id="voiceBtn" class="mic-btn">🎤</button>
+    </div>
+</div>
+
+<!-- SCRIPTS -->
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
