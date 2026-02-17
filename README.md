@@ -61,13 +61,13 @@ cd BookGenie
 ### 2. Create Virtual Environment
 
 Create a Python virtual environment to manage dependencies:
-# Create virtual environment
+#### Create virtual environment
 python -m venv venv
 
-## Activate virtual environment
-# On Windows (Command Prompt)
+#### Activate virtual environment
+#### On Windows (Command Prompt)
 venv\Scripts\activate
-# On Windows (PowerShell)
+#### On Windows (PowerShell)
 venv\Scripts\Activate.ps1
 
 ### 3. Import The data
@@ -84,27 +84,25 @@ OPENAI_API_KEY = "openAI_API_Key"
 
 ---
 
-### Structure 
+###  Folder Structure 
 BookGenie/
 │
 ├── data/
-│   └── Books.csv             
+│ └── Books.csv # Sample books dataset
 ├── static/
-│   ├── css/
-│   │   └── style.css
-│   └── js/
-│       └── script.js
+│ ├── css/
+│ │ └── style.css # Stylesheets
+│ └── js/
+│ └── script.js # Frontend JS
 ├── templates/
-│   ├── index.html
-│   ├── cart.html
-│   ├── details.html
-│   ├── login.html
-│   ├── signup.html
-│   └── privacy.html
-├── venv/
-├── .env
-├── import_books.py
-├── server.py
-└── README.md
-
----
+│ ├── index.html # Home page
+│ ├── cart.html # Cart page
+│ ├── details.html # Book details page
+│ ├── login.html # Login page
+│ ├── signup.html # Signup page
+│ └── privacy.html # Privacy policy page
+├── venv/ # Python virtual environment
+├── .env # Environment variables
+├── import_books.py # Script to import books from CSV
+├── server.py # Flask backend with routes & APIs
+└── README.md # Project documentation
