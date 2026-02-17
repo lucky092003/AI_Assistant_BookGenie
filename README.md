@@ -55,36 +55,35 @@ The project uses **Flask** for the backend, **MongoDB** for data storage, and a 
 ## Installation & Setup
 
 ### 1. Clone the Repository
-git clone <your-repo-url>
-cd BookGenie
+- git clone <https://github.com/lucky092003/AI_Assistant_BookGenie.git>
+- cd BookGenie
 
 ### 2. Create Virtual Environment
 
-Create a Python virtual environment to manage dependencies:
+- Create a Python virtual environment to manage dependencies:
 #### 2.1 Create virtual environment
-python -m venv venv
+- python -m venv venv
 
 #### 2.2 Activate virtual environment
 #### On Windows (Command Prompt)
-venv\Scripts\activate
+- venv\Scripts\activate
 #### 2.3 On Windows (PowerShell)
-venv\Scripts\Activate.ps1
+- venv\Scripts\Activate.ps1
 
 ### 3. Import The data
-python import_books.py
+- python import_books.py
 
 ### 4. Run the Application
-python server.py
+- python server.py
 
 ### 5. Run Local host 
-http://localhost:3000/
+- http://localhost:3000/
 
 ## Environment Variables
-OPENAI_API_KEY = "openAI_API_Key"
+- OPENAI_API_KEY = "openAI_API_Key"
 
 ---
 
----
 ###  Folder Structure 
 BookGenie/
 │
