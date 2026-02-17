@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Your Cart - BookGenie</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="cart-page">
+    <h1>🛒 Your Cart</h1>
+
+    {% if items %}
+        <div class="cart-list" id="cartList">
+            {% for item in items %}
+                <div class="cart-row" data-id="{{ item._id|string }}">
+                    <div class="cart-image">
+                        <img src="{{ item.image_url if item.image_url else 'https://via.placeholder.com/150x200?text=No+Cover' }}"
+                             alt="{{ item.title }}">
+                    </div>
+                    <div class="cart-details">
+                        <h3>{{ item.title }}</h3>
+                        <p>{{ item.author }}</p>
+                        <p>ISBN: {{ item.isbn }}</p>
+                        <p>Price: ₹{{ item.price }}</p>
+                        <button class="remove-btn" onclick="removeCartItem('{{ item._id|string }}')">❌ Remove</button>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <div class="cart-total" id="cartTotal">
+            <h2>Total: ₹{{ total }}</h2>
+        </div>
+
+        <button class="clear-btn" onclick="clearCart()">Clear Cart</button>
+
+    {% else %}
+        <p>Your cart is empty 😢</p>
+    {% endif %}
+
+    <br>
+    <a href="/" class="back-btn">⬅ Continue Shopping</a>
+</div>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+<script>
+async function clearCart() {
+    try {
+        const res = await fetch('/api/cart/clear', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            alert("Cart cleared ✅");
+            window.location.reload();
+        }
+    } catch(err) {
+        console.error(err);
+        alert("Failed to clear cart ❌");
+    }
+}
+</script>
+</body>
+</html>

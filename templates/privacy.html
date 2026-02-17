@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy | BookGenie</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        .privacy-container {
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .policy-card {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: var(--shadow-soft);
+            line-height: 1.8;
+        }
+        .policy-card h1 {
+            color: var(--genie-purple);
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        .policy-card h2 {
+            color: var(--dark-bg);
+            margin-top: 30px;
+            margin-bottom: 15px;
+            font-size: 22px;
+            border-left: 4px solid var(--genie-purple);
+            padding-left: 15px;
+        }
+        .policy-card p {
+            color: var(--text-muted);
+            margin-bottom: 15px;
+        }
+        .last-updated {
+            font-size: 14px;
+            color: var(--genie-purple-light);
+            font-weight: 600;
+        }
+        .highlight-box {
+            background: #f1f0ff;
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px dashed var(--genie-purple);
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="glass-nav">
+        <div class="nav-content">
+            <a href="/" class="logo" style="text-decoration: none;">✨ Book<span>Genie</span></a>
+            <div class="nav-actions">
+                <a href="/" class="login-pill" style="text-decoration: none;">Back to Home</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="privacy-container">
+        <div class="policy-card">
+            <h1>Privacy Policy</h1>
+            <p class="last-updated">Last Updated: February 16, 2026</p>
+            <hr style="opacity: 0.1; margin: 20px 0;">
+
+            <p>Welcome to <strong>BookGenie</strong>. Hum aapki privacy ka poora dhyan rakhte hain. Ye policy batati hai ki hum aapka data kaise collect aur secure karte hain.</p>
+
+            <div class="highlight-box">
+                <strong>Quick Summary:</strong> Hum aapka data bechte nahi hain. Hum sirf aapko behtar book recommendations aur chatbot services dene ke liye data process karte hain.
+            </div>
+
+            <h2>1. Information We Collect</h2>
+            <p>Hum niche di gayi jankari collect karte hain:</p>
+            <ul>
+                <li><strong>Catalog Data:</strong> Jo books aap hamare store par dekhte hain, wo hamare MongoDB database se aati hain.</li>
+                <li><strong>Chat Conversations:</strong> Chatbot ke saath hone wali baatcheet OpenAI APIs ke dwara process ki jati hai taaki aapko AI-based jawab mil sakein.</li>
+            </ul>
+
+            <h2>2. How We Use Data</h2>
+            <p>Aapka data in kaamo ke liye use hota hai:</p>
+            <ul>
+                <li>Website par books ko filter aur search karne ke liye.</li>
+                <li>AI Chatbot ke zariye book prices aur recommendations dene ke liye.</li>
+                <li>Database performance ko optimize karne ke liye.</li>
+            </ul>
+
+            <h2>3. Third-Party Sharing</h2>
+            <p>Hum aapka data sirf in trusted services ke saath share karte hain:</p>
+            <ul>
+                <li><strong>OpenAI:</strong> Sirf chatbot messages ko reply generate karne ke liye bheja jata hai.</li>
+                <li><strong>MongoDB:</strong> Aapka local library data yahan safely store hota hai.</li>
+            </ul>
+
+            <h2>4. Security</h2>
+            <p>Humne aapki security ke liye <strong>CORS protection</strong> lagayi hai. Saath hi, saari sensitive API keys hamare server par <strong>.env files</strong> mein secure hain.</p>
+
+            <h2>5. Contact Us</h2>
+            <p>Agar aapka koi sawal hai, toh aap hamein yahan sampark kar sakte hain:</p>
+            <p>📧 <strong>support@bookgenie.com</strong></p>
+        </div>
+    </div>
+
+    <footer class="premium-footer" style="margin-top: 50px;">
+        <div class="footer-legal">
+            &copy; 2026 BookGenie Store | All Rights Reserved
+        </div>
+    </footer>
+
+</body>
+</html>
