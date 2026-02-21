@@ -10,32 +10,54 @@
     <h1>🛒 Your Cart</h1>
 
     {% if items %}
+
         <div class="cart-list" id="cartList">
+
             {% for item in items %}
-                <div class="cart-row" data-id="{{ item._id|string }}">
-                    <div class="cart-image">
-                        <img src="{{ item.image_url if item.image_url else 'https://via.placeholder.com/150x200?text=No+Cover' }}"
-                             alt="{{ item.title }}">
-                    </div>
-                    <div class="cart-details">
-                        <h3>{{ item.title }}</h3>
-                        <p>{{ item.author }}</p>
-                        <p>ISBN: {{ item.isbn }}</p>
-                        <p>Price: ₹{{ item.price }}</p>
-                        <button class="remove-btn" onclick="removeCartItem('{{ item._id|string }}')">❌ Remove</button>
-                    </div>
+            <div class="cart-row"
+                 data-id="{{ item._id|string if item._id else item.isbn }}">
+
+                <div class="cart-image">
+                    <img src="{{ item.image_url if item.image_url else 'https://via.placeholder.com/150x200?text=No+Cover' }}"
+                         alt="{{ item.title }}">
                 </div>
+
+                <div class="cart-details">
+                    <h3>{{ item.title }}</h3>
+                    <p>{{ item.author }}</p>
+                    <p>ISBN: {{ item.isbn }}</p>
+                    <p class="price">Price: ₹{{ item.price }}</p>
+
+                    <button class="remove-btn"
+                        onclick="removeCartItem('{{ item._id|string if item._id else item.isbn }}')">
+                        ❌ Remove
+                    </button>
+                </div>
+            </div>
             {% endfor %}
+
         </div>
 
-        <div class="cart-total" id="cartTotal">
+        <!-- TOTAL -->
+        <div class="cart-total">
             <h2>Total: ₹{{ total }}</h2>
         </div>
 
-        <button class="clear-btn" onclick="clearCart()">Clear Cart</button>
+        <!-- ACTION BUTTONS -->
+        <div class="cart-actions">
+
+            <button class="buy-btn" onclick="buyCart()">
+                💳 Buy Now
+            </button>
+
+            <button class="clear-btn" onclick="clearCart()">
+                🗑 Clear Cart
+            </button>
+
+        </div>
 
     {% else %}
-        <p>Your cart is empty 😢</p>
+        <p class="empty-cart">Your cart is empty 😢</p>
     {% endif %}
 
     <br>
@@ -43,20 +65,66 @@
 </div>
 
 <script src="{{ url_for('static', filename='script.js') }}"></script>
+
 <script>
-async function clearCart() {
+
+// ===============================
+// BUY FUNCTION (Login Only)
+// ===============================
+async function buyCart() {
+
     try {
-        const res = await fetch('/api/cart/clear', { method: 'POST' });
+        const res = await fetch('/api/cart/buy', {
+            method: 'POST'
+        });
+
         const data = await res.json();
+
+        if (!data.success) {
+
+            alert(data.message);
+
+            // Guest redirect to login
+            if (res.status === 401) {
+                window.location.href = "/login";
+            }
+
+        } else {
+            alert("Order placed successfully 🎉");
+            window.location.reload();
+        }
+
+    } catch (err) {
+        console.error(err);
+        alert("Something went wrong ❌");
+    }
+}
+
+
+// ===============================
+// CLEAR CART
+// ===============================
+async function clearCart() {
+
+    try {
+        const res = await fetch('/api/cart/clear', {
+            method: 'POST'
+        });
+
+        const data = await res.json();
+
         if (data.success) {
             alert("Cart cleared ✅");
             window.location.reload();
         }
-    } catch(err) {
+
+    } catch (err) {
         console.error(err);
         alert("Failed to clear cart ❌");
     }
 }
+
 </script>
+
 </body>
 </html>
