@@ -32,10 +32,10 @@
             </div>
 
             {% if session.get("user") %}
-                <div class="user-pill">👋 Hi, {{ session["user"] }}</div>
+                <div class="user-pill"> Hi, {{ session["user"] }}</div>
                 <a href="/logout" class="login-pill">Logout</a>
             {% else %}
-                <div class="guest-pill">🟢 Guest Mode</div>
+                <div class="guest-pill">👤</div>
                 <a href="/login" class="login-pill">Login</a>
                 <a href="/signup" class="signup-pill">Signup</a>
             {% endif %}
@@ -50,7 +50,7 @@
 
         <div class="hero-text">
             {% if session.get("user") %}
-                <h1>Welcome Back, <span>{{ session["user"] }}</span> 👋</h1>
+                <h1>Welcome Back, <span>{{ session["user"] }}</span></h1>
             {% else %}
                 <h1>Wish for a Book,<br><span>Genie</span> Delivers.</h1>
                 <p class="guest-note">⚡ Guest users can browse & add to cart. Login required to buy.</p>

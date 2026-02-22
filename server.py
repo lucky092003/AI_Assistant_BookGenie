@@ -1,5 +1,5 @@
 from flask import Flask, jsonify, render_template, request, redirect, session, url_for
-from pymongo import MongoClient
+from pymongo import MongoClient, ReturnDocument
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from bson import ObjectId
@@ -34,10 +34,23 @@ books_collection = db["books"]
 users_collection = db["users"]
 cart_collection = db["cart"]
 orders_collection = db["orders"]
+counters_collection = db["counters"]
 
 users_collection.create_index("email", unique=True)
 
 print("✅ MongoDB Connected Successfully")
+
+# ===============================
+# AUTO INCREMENT FUNCTION
+# ===============================
+def get_next_user_id():
+    counter = counters_collection.find_one_and_update(
+        {"_id": "user_id"},
+        {"$inc": {"sequence_value": 1}},
+        upsert=True,  # create if not exists
+        return_document=ReturnDocument.AFTER
+    )
+    return counter["sequence_value"]
 
 # ===============================
 # AUTH ROUTES
@@ -52,10 +65,14 @@ def signup():
         if users_collection.find_one({"email": email}):
             return "User already exists"
 
+        new_user_id = get_next_user_id()
+
         users_collection.insert_one({
+            "user_id": new_user_id,
             "username": username,
             "email": email,
-            "password": password
+            "password": password,
+            "created_at": datetime.utcnow()
         })
 
         return redirect(url_for("login"))
@@ -74,6 +91,7 @@ def login():
         if user and check_password_hash(user["password"], password):
             session["user"] = user["username"]
             session["email"] = user["email"]
+            session["user_id"] = user["user_id"]
             return redirect(url_for("home"))
 
         return render_template("login.html", error="Invalid email or password")
@@ -86,14 +104,12 @@ def logout():
     session.clear()
     return redirect(url_for("home"))
 
-
 # ===============================
 # HOME
 # ===============================
 @app.route("/")
 def home():
     books = list(books_collection.find({}, {"_id": 0}).limit(50))
-
     user = session.get("user")
     is_guest = user is None
 
@@ -104,7 +120,6 @@ def home():
         is_guest=is_guest
     )
 
-
 # ===============================
 # BOOK DETAILS
 # ===============================
@@ -114,6 +129,25 @@ def book_details(isbn):
     return render_template("details.html", book=book)
 
 
+@app.route("/search", methods=["GET"])
+def search():
+    query = request.args.get("q", "")  # URL me ?q=search_term
+    if not query:
+        return redirect(url_for("home"))
+
+    # case-insensitive search on title or author
+    books = list(books_collection.find(
+        {"$or": [
+            {"title": {"$regex": query, "$options": "i"}},
+            {"author": {"$regex": query, "$options": "i"}}
+        ]},
+        {"_id": 0}
+    ).limit(50))
+
+    user = session.get("user")
+    is_guest = user is None
+
+    return render_template("index.html", books=books, user=user, is_guest=is_guest)
 # ===============================
 # CART PAGE
 # ===============================
@@ -128,7 +162,6 @@ def cart_page():
     total = sum(float(item["price"]) for item in items)
 
     return render_template("cart.html", items=items, total=total)
-
 
 # ===============================
 # ADD TO CART
@@ -160,7 +193,6 @@ def add_to_cart():
 
     return jsonify({"success": True})
 
-
 # ===============================
 # REMOVE FROM CART
 # ===============================
@@ -181,7 +213,6 @@ def remove_cart_item():
 
     return jsonify({"success": True})
 
-
 # ===============================
 # CART COUNT
 # ===============================
@@ -194,7 +225,6 @@ def cart_count():
         count = len(session.get("guest_cart", []))
 
     return jsonify({"count": count})
-
 
 # ===============================
 # CLEAR CART
@@ -209,9 +239,8 @@ def clear_cart():
 
     return jsonify({"success": True})
 
-
 # ===============================
-# BUY CART (Login Required)
+# BUY CART
 # ===============================
 @app.route("/api/cart/buy", methods=["POST"])
 def buy_cart():
@@ -240,7 +269,6 @@ def buy_cart():
     }
 
     orders_collection.insert_one(order)
-
     cart_collection.delete_many({"user_email": user_email})
 
     return jsonify({
@@ -248,9 +276,8 @@ def buy_cart():
         "message": "Order placed successfully 🎉"
     })
 
-
 # ===============================
-# CHATBOT (Guest Allowed)
+# CHATBOT
 # ===============================
 @app.route("/api/chatbot", methods=["POST"])
 def chatbot_api():
@@ -291,7 +318,6 @@ def chatbot_api():
         reply = f"Error: {str(e)}"
 
     return jsonify({"reply": reply})
-
 
 # ===============================
 if __name__ == "__main__":
