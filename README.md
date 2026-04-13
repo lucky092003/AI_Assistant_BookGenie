@@ -88,7 +88,7 @@ BookGenie/
 
 ```bash
 git clone https://github.com/lucky092003/AI_Assistant_BookGenie.git
-cd BookGenie
+cd AI_Assistant_BookGenie
 ```
 
 ---
