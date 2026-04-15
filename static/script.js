@@ -161,6 +161,9 @@ function toggleChat() {
         chatWindow.style.display === "flex" ? "none" : "flex";
 }
 
+    let activeChatController = null;
+    let activeLoadingId = null;
+
 // ===============================
 // SEND MESSAGE
 // ===============================
@@ -173,10 +176,16 @@ async function sendMessage() {
     const text = input.value.trim();
     if (!text) return;
 
+    if (activeChatController) {
+        activeChatController.abort();
+    }
+    activeChatController = new AbortController();
+
     body.innerHTML += `<div class="message user">${text}</div>`;
     input.value = "";
 
     const loadingId = "load-" + Date.now();
+    activeLoadingId = loadingId;
     body.innerHTML += `<div class="message bot" id="${loadingId}">Genie thinking... 🧞‍♂️</div>`;
     body.scrollTop = body.scrollHeight;
 
@@ -184,23 +193,36 @@ async function sendMessage() {
         const response = await fetch("/api/chatbot", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: text })
+            body: JSON.stringify({ message: text }),
+            signal: activeChatController.signal
         });
 
         const data = await response.json();
         const botMsg = document.getElementById(loadingId);
 
         if (botMsg) {
-            botMsg.innerText = data.reply || "Hmm... no reply 🤔";
+            if (data.stopped) {
+                botMsg.innerText = "Stopped.";
+            } else {
+                botMsg.innerText = data.reply || "Hmm... no reply 🤔";
 
-            if ("speechSynthesis" in window && data.reply) {
-                speakText(data.reply);
+                if ("speechSynthesis" in window && data.reply) {
+                    speakText(data.reply);
+                }
             }
         }
 
     } catch (error) {
         const botMsg = document.getElementById(loadingId);
-        if (botMsg) botMsg.innerText = "Magic lamp flickering... Try again ✨";
+        if (botMsg) {
+            botMsg.innerText =
+                error.name === "AbortError"
+                    ? "Stopped."
+                    : "Magic lamp flickering... Try again ✨";
+        }
+    } finally {
+        activeChatController = null;
+        activeLoadingId = null;
     }
 
     body.scrollTop = body.scrollHeight;
@@ -258,6 +280,51 @@ function startVoice() {
         }
     };
 }
+
+// ===============================
+// STOP CHAT (TEXT + VOICE + SPEECH)
+// ===============================
+async function stopChat() {
+    if (recognition) {
+        try { recognition.stop(); } catch (e) { console.error(e); }
+    }
+
+    if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+    }
+
+    if (activeChatController) {
+        activeChatController.abort();
+        activeChatController = null;
+    }
+
+    try {
+        await fetch("/api/chatbot/stop", { method: "POST" });
+    } catch (e) {
+        console.error(e);
+    }
+
+    if (activeLoadingId) {
+        const botMsg = document.getElementById(activeLoadingId);
+        if (botMsg) botMsg.innerText = "Stopped.";
+        activeLoadingId = null;
+    }
+
+    const micBtn = document.getElementById("voiceBtn");
+    if (micBtn) {
+        micBtn.classList.remove("listening");
+        micBtn.innerText = "🎤";
+    }
+
+    showToast("Chat stopped");
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+    const stopBtn = document.getElementById("stopBtn");
+    if (stopBtn) {
+        stopBtn.addEventListener("click", stopChat);
+    }
+});
 
 // ===============================
 // TOAST SYSTEM (Improved)

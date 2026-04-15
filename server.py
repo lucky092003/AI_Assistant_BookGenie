@@ -8,6 +8,8 @@ import requests
 import openai
 from dotenv import load_dotenv
 from datetime import datetime
+from threading import Lock
+import re
 
 # ===============================
 # LOAD ENV
@@ -38,7 +40,101 @@ counters_collection = db["counters"]
 
 users_collection.create_index("email", unique=True)
 
-print("✅ MongoDB Connected Successfully")
+print(" MongoDB Connected Successfully")
+
+# ===============================
+# CHATBOT REQUEST STATE
+# ===============================
+chat_lock = Lock()
+chat_stop_flags = {}
+
+
+def get_chat_key():
+    if "user_id" in session:
+        return f"user:{session['user_id']}"
+    return f"guest:{request.remote_addr}:{request.headers.get('User-Agent', '')}"
+
+
+def get_relevant_books(user_message, limit=8):
+    tokens = [
+        token for token in re.findall(r"[A-Za-z0-9']+", user_message.lower())
+        if len(token) >= 3
+    ]
+    projection = {
+        "_id": 0,
+        "title": 1,
+        "author": 1,
+        "isbn": 1,
+        "price": 1,
+        "publisher": 1,
+        "year": 1
+    }
+
+    if tokens:
+        pattern = "|".join(re.escape(token) for token in tokens[:6])
+        query = {
+            "$or": [
+                {"title": {"$regex": pattern, "$options": "i"}},
+                {"author": {"$regex": pattern, "$options": "i"}},
+                {"publisher": {"$regex": pattern, "$options": "i"}}
+            ]
+        }
+        books = list(books_collection.find(query, projection).limit(limit))
+    else:
+        books = []
+
+    if not books:
+        books = list(books_collection.find({}, projection).limit(limit))
+
+    for book in books:
+        book["price"] = float(book.get("price", 449))
+
+    return books
+
+
+def get_user_chat_context():
+    if "email" not in session:
+        return {
+            "user": "guest",
+            "is_logged_in": False,
+            "cart_items": session.get("guest_cart", []),
+            "cart_count": len(session.get("guest_cart", [])),
+            "recent_orders": [],
+            "purchased_titles": [],
+            "note": "Guest user. Ask them to login for account-specific order history."
+        }
+
+    user_email = session["email"]
+    cart_items = list(cart_collection.find(
+        {"user_email": user_email},
+        {"_id": 0, "title": 1, "author": 1, "price": 1, "isbn": 1}
+    ))
+
+    recent_orders = list(orders_collection.find(
+        {"user_email": user_email},
+        {"_id": 0, "items": 1, "total_amount": 1, "created_at": 1}
+    ).sort("created_at", -1).limit(5))
+
+    purchased_titles = []
+    for order in recent_orders:
+        for item in order.get("items", []):
+            title = item.get("title")
+            if title:
+                purchased_titles.append(title)
+
+    # Preserve order while removing duplicates.
+    purchased_titles = list(dict.fromkeys(purchased_titles))
+
+    return {
+        "user": session.get("user", "user"),
+        "is_logged_in": True,
+        "email": user_email,
+        "cart_items": cart_items,
+        "cart_count": len(cart_items),
+        "recent_orders": recent_orders,
+        "purchased_titles": purchased_titles,
+        "note": "Use this data for personalized cart/order answers."
+    }
 
 # ===============================
 # AUTO INCREMENT FUNCTION
@@ -282,10 +378,51 @@ def buy_cart():
 @app.route("/api/chatbot", methods=["POST"])
 def chatbot_api():
 
-    data = request.get_json()
-    user_message = data.get("message", "")
+    data = request.get_json(silent=True) or {}
+    user_message = (data.get("message") or "").strip()
+
+    if not user_message:
+        return jsonify({"reply": "Please type something.", "stopped": False}), 400
+
+    chat_key = get_chat_key()
+
+    with chat_lock:
+        chat_stop_flags[chat_key] = False
+
+    books_context = get_relevant_books(user_message)
+    user_context = get_user_chat_context()
+
+    context_message = {
+        "user_context": user_context,
+        "relevant_books": books_context
+    }
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are BookGenie AI assistant for a bookstore app. "
+                "Use the provided context to answer questions about books, cart, and orders. "
+                "If user asks account-specific info and not logged in, ask them to login. "
+                "Do not invent cart/order data not present in context. "
+                "Keep replies short, clear, and user-friendly."
+            )
+        },
+        {
+            "role": "system",
+            "content": f"Context data: {context_message}"
+        },
+        {
+            "role": "user",
+            "content": user_message
+        }
+    ]
 
     try:
+        with chat_lock:
+            if chat_stop_flags.get(chat_key):
+                return jsonify({"reply": "Stopped.", "stopped": True})
+
         if USE_OPENROUTER:
             url = "https://openrouter.ai/api/v1/chat/completions"
             headers = {
@@ -294,30 +431,38 @@ def chatbot_api():
             }
             payload = {
                 "model": "gpt-4o-mini",
-                "messages": [
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": user_message}
-                ]
+                "messages": messages
             }
 
-            response = requests.post(url, json=payload, headers=headers)
-            reply = response.json()["choices"][0]["message"]["content"]
+            response = requests.post(url, json=payload, headers=headers, timeout=45)
+            response.raise_for_status()
+            body = response.json()
+            reply = body.get("choices", [{}])[0].get("message", {}).get("content", "No response")
 
         else:
             openai.api_key = OPENAI_API_KEY
             response = openai.ChatCompletion.create(
                 model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": user_message}
-                ]
+                messages=messages
             )
             reply = response.choices[0].message.content
+
+        with chat_lock:
+            if chat_stop_flags.get(chat_key):
+                return jsonify({"reply": "Stopped.", "stopped": True})
 
     except Exception as e:
         reply = f"Error: {str(e)}"
 
-    return jsonify({"reply": reply})
+    return jsonify({"reply": reply, "stopped": False})
+
+
+@app.route("/api/chatbot/stop", methods=["POST"])
+def chatbot_stop():
+    chat_key = get_chat_key()
+    with chat_lock:
+        chat_stop_flags[chat_key] = True
+    return jsonify({"success": True, "message": "Chat stopped"})
 
 # ===============================
 if __name__ == "__main__":
