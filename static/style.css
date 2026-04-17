@@ -200,6 +200,55 @@ body {
     margin: 40px 5%;
 }
 
+.pagination-wrap {
+    margin: 10px 5% 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.page-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 110px;
+    padding: 10px 16px;
+    border-radius: 999px;
+    border: 1px solid #d6d6ee;
+    background: #fff;
+    color: var(--genie-purple);
+    text-decoration: none;
+    font-weight: 600;
+    transition: var(--transition);
+}
+
+.page-btn:hover {
+    background: var(--genie-purple);
+    border-color: var(--genie-purple);
+    color: #fff;
+}
+
+.page-btn.current {
+    background: var(--genie-purple);
+    border-color: var(--genie-purple);
+    color: #fff;
+    cursor: default;
+}
+
+.page-btn.disabled {
+    background: #efeff4;
+    border-color: #e0e0e8;
+    color: #9aa0aa;
+    cursor: not-allowed;
+}
+
+.page-status {
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
 .book-card {
     background: white;
     border-radius: 20px;
@@ -366,17 +415,6 @@ body {
     align-items: center;
 }
 
-.chatbot-header button {
-    border: none;
-    background: rgba(255, 255, 255, 0.2);
-    color: white;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    cursor: pointer;
-    line-height: 1;
-}
-
 .chatbot-body {
     flex: 1;
     padding: 15px;
@@ -405,21 +443,19 @@ body {
 }
 
 .chatbot-footer {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    display: flex;
+    align-items: center;
     gap: 8px;
     padding: 10px;
     border-top: 1px solid #eee;
-    align-items: center;
-    background: white;
 }
 
 .chatbot-footer input {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     padding: 10px;
     border-radius: 20px;
     border: 1px solid #ddd;
-    min-width: 0;
 }
 
 .chatbot-footer button {
@@ -430,6 +466,68 @@ body {
     color: white;
     cursor: pointer;
     transition: var(--transition);
+}
+
+.chat-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.chat-circle-btn {
+    width: 36px;
+    height: 36px;
+    margin-left: 0;
+    position: relative;
+    border-radius: 50%;
+    border: 1px solid #ddd;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-size: 15px;
+    background: #f4f5f8;
+    color: #2e2e2e;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+.chat-send-btn {
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 18px;
+    flex-shrink: 0;
+}
+
+.chat-circle-btn.is-on {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: #fff;
+}
+
+.chat-circle-btn.is-off {
+    background: #eceff4;
+    border-color: #d5d9e0;
+    color: #6b7280;
+}
+
+.chat-circle-btn.listening {
+    animation: pulseMic 1s infinite;
+}
+
+@keyframes pulseMic {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5);
+    }
+    70% {
+        transform: scale(1.06);
+        box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+    }
 }
 
 /* ===============================
@@ -597,53 +695,19 @@ body {
     background: #5a4bcc;
 }
 
-.chatbot-footer .mic-btn,
-.chatbot-footer #stopBtn {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.chatbot-footer #stopBtn {
-    background: #ef4444;
-}
-
-.chatbot-footer #stopBtn:hover {
-    background: #dc2626;
-}
-
-.mic-btn.listening {
-    background: #0ea5a1;
-    box-shadow: 0 0 0 3px rgba(14, 165, 161, 0.2);
-}
-
-@media (max-width: 600px) {
-    .chatbot-bubble {
-        right: 16px;
-        bottom: 16px;
-        width: 56px;
-        height: 56px;
-    }
-
-    .chatbot-window {
-        right: 12px;
-        left: 12px;
-        bottom: 84px;
-        width: auto;
-        height: 70vh;
-        border-radius: 18px;
-    }
-
+@media (max-width: 480px) {
     .chatbot-footer {
-        grid-template-columns: minmax(0, 1fr) auto auto auto;
         gap: 6px;
+        padding: 8px;
     }
 
-    .chatbot-footer button {
-        padding: 8px 12px;
+    .chat-send-btn {
+        padding: 0 10px;
+    }
+
+    .chat-circle-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
     }
 }

@@ -64,22 +64,22 @@
 
             <div class="filter-group">
                 <label>Book Title</label>
-                <input type="text" id="filterTitle" placeholder="Enter title..." oninput="dynamicFilter()">
+                <input type="text" id="filterTitle" placeholder="Enter title..." value="{{ title_filter }}" oninput="applyCatalogFiltersDebounced()">
             </div>
 
             <div class="filter-group">
                 <label>Author</label>
-                <input type="text" id="filterAuthor" placeholder="Enter author..." oninput="dynamicFilter()">
+                <input type="text" id="filterAuthor" placeholder="Enter author..." value="{{ author_filter }}" oninput="applyCatalogFiltersDebounced()">
             </div>
 
             <div class="filter-group">
                 <label>Year</label>
-                <input type="text" id="filterYear" placeholder="e.g. 2002" oninput="dynamicFilter()">
+                <input type="text" id="filterYear" placeholder="e.g. 2002" value="{{ year_filter }}" oninput="applyCatalogFiltersDebounced()">
             </div>
 
             <div class="filter-group">
                 <label>Publisher</label>
-                <input type="text" id="filterPublisher" placeholder="Enter publisher..." oninput="dynamicFilter()">
+                <input type="text" id="filterPublisher" placeholder="Enter publisher..." value="{{ publisher_filter }}" oninput="applyCatalogFiltersDebounced()">
             </div>
 
         </div>
@@ -137,6 +137,44 @@
         {% endfor %}
 
     </div>
+
+    {% if total_pages > 1 %}
+    <div class="pagination-wrap">
+        {% if has_prev %}
+            {% if is_search %}
+                <a class="page-btn" href="{{ url_for('search', q=search_query, title=title_filter, author=author_filter, year=year_filter, publisher=publisher_filter, page=page-1) }}">Previous</a>
+            {% else %}
+                <a class="page-btn" href="{{ url_for('home', title=title_filter, author=author_filter, year=year_filter, publisher=publisher_filter, page=page-1) }}">Previous</a>
+            {% endif %}
+        {% else %}
+            <span class="page-btn disabled">Previous</span>
+        {% endif %}
+
+        {% for page_number in page_numbers %}
+            {% if page_number == page %}
+                <span class="page-btn current">{{ page_number }}</span>
+            {% else %}
+                {% if is_search %}
+                    <a class="page-btn" href="{{ url_for('search', q=search_query, title=title_filter, author=author_filter, year=year_filter, publisher=publisher_filter, page=page_number) }}">{{ page_number }}</a>
+                {% else %}
+                    <a class="page-btn" href="{{ url_for('home', title=title_filter, author=author_filter, year=year_filter, publisher=publisher_filter, page=page_number) }}">{{ page_number }}</a>
+                {% endif %}
+            {% endif %}
+        {% endfor %}
+
+        <span class="page-status">Page {{ page }} of {{ total_pages }}</span>
+
+        {% if has_next %}
+            {% if is_search %}
+                <a class="page-btn" href="{{ url_for('search', q=search_query, title=title_filter, author=author_filter, year=year_filter, publisher=publisher_filter, page=page+1) }}">Next</a>
+            {% else %}
+                <a class="page-btn" href="{{ url_for('home', title=title_filter, author=author_filter, year=year_filter, publisher=publisher_filter, page=page+1) }}">Next</a>
+            {% endif %}
+        {% else %}
+            <span class="page-btn disabled">Next</span>
+        {% endif %}
+    </div>
+    {% endif %}
 </main>
 
 <!-- ================= FOOTER ================= -->
@@ -189,9 +227,16 @@
                placeholder="Ask me anything..."
                onkeypress="if(event.key === 'Enter') sendMessage()">
 
-        <button onclick="sendMessage()">Send</button>
-        <button onclick="startVoice()" id="voiceBtn" class="mic-btn">🎤</button>
-        <button id="stopBtn" class="mic-btn">⏹</button>
+        <button onclick="sendMessage()" class="chat-send-btn">Send</button>
+
+        <div class="chat-controls">
+            <button id="voiceBtn" class="chat-circle-btn voice-btn is-off" onclick="toggleVoiceInput()" title="Mic is off">
+                🎤
+            </button>
+            <button id="speakerToggleBtn" class="chat-circle-btn is-off" onclick="toggleSpeaker()" title="Speaker is off">
+                🔈
+            </button>
+        </div>
     </div>
 
 </div>
@@ -209,35 +254,29 @@
             });
     });
 
-    // Dynamic Filter
-    function dynamicFilter() {
+    let catalogFilterTimer;
 
-        const title = document.getElementById("filterTitle").value.toLowerCase();
-        const author = document.getElementById("filterAuthor").value.toLowerCase();
-        const year = document.getElementById("filterYear").value.toLowerCase();
-        const publisher = document.getElementById("filterPublisher").value.toLowerCase();
+    function applyCatalogFilters() {
+        const title = document.getElementById("filterTitle")?.value.trim() || "";
+        const author = document.getElementById("filterAuthor")?.value.trim() || "";
+        const year = document.getElementById("filterYear")?.value.trim() || "";
+        const publisher = document.getElementById("filterPublisher")?.value.trim() || "";
 
-        const cards = document.querySelectorAll(".book-card");
+        const params = new URLSearchParams(window.location.search);
 
-        cards.forEach(card => {
+        if (title) params.set("title", title); else params.delete("title");
+        if (author) params.set("author", author); else params.delete("author");
+        if (year) params.set("year", year); else params.delete("year");
+        if (publisher) params.set("publisher", publisher); else params.delete("publisher");
 
-            const cTitle = card.dataset.title || "";
-            const cAuthor = card.dataset.author || "";
-            const cYear = card.dataset.year || "";
-            const cPublisher = card.dataset.publisher || "";
+        params.set("page", "1");
+        const nextUrl = `${window.location.pathname}?${params.toString()}`;
+        window.location.assign(nextUrl);
+    }
 
-            if (
-                cTitle.includes(title) &&
-                cAuthor.includes(author) &&
-                cYear.includes(year) &&
-                cPublisher.includes(publisher)
-            ) {
-                card.style.display = "block";
-            } else {
-                card.style.display = "none";
-            }
-
-        });
+    function applyCatalogFiltersDebounced() {
+        clearTimeout(catalogFilterTimer);
+        catalogFilterTimer = setTimeout(applyCatalogFilters, 450);
     }
 </script>
 

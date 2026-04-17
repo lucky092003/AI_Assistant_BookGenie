@@ -3,13 +3,20 @@ from pymongo import MongoClient, ReturnDocument
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from bson import ObjectId
+import json
 import os
+import pickle
+import random
+import re
 import requests
 import openai
 from dotenv import load_dotenv
 from datetime import datetime
-from threading import Lock
-import re
+from pathlib import Path
+
+import torch
+from safetensors.torch import load_file as safetensors_load_file
+from transformers import AutoConfig, AutoTokenizer, DistilBertForSequenceClassification
 
 # ===============================
 # LOAD ENV
@@ -18,6 +25,12 @@ load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 USE_OPENROUTER = os.getenv("USE_OPENROUTER", "True").lower() == "true"
+INTENT_FILE = Path(__file__).with_name("data").joinpath("intent.json")
+INTENT_MODEL_DIR = Path(__file__).with_name("notebook").joinpath("intent_model")
+INTENT_MODEL_WEIGHTS = Path(__file__).with_name("model.safetensors")
+INTENT_LABEL_ENCODER_FILE = Path(__file__).with_name("notebook").joinpath("label_encoder.pkl")
+INTENT_MODEL_THRESHOLD = float(os.getenv("INTENT_MODEL_THRESHOLD", "0.65"))
+BOOKS_PER_PAGE = int(os.getenv("BOOKS_PER_PAGE", "20"))
 
 # ===============================
 # FLASK APP INIT
@@ -40,101 +53,390 @@ counters_collection = db["counters"]
 
 users_collection.create_index("email", unique=True)
 
-print(" MongoDB Connected Successfully")
+print("✅ MongoDB Connected Successfully")
 
 # ===============================
-# CHATBOT REQUEST STATE
+# CHATBOT INTENTS
 # ===============================
-chat_lock = Lock()
-chat_stop_flags = {}
+def normalize_text(text):
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9\s]", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
-def get_chat_key():
-    if "user_id" in session:
-        return f"user:{session['user_id']}"
-    return f"guest:{request.remote_addr}:{request.headers.get('User-Agent', '')}"
+def load_intents():
+    try:
+        with INTENT_FILE.open("r", encoding="utf-8") as file:
+            return json.load(file).get("intents", [])
+    except Exception as exc:
+        print(f"⚠️ Could not load chatbot intents: {exc}")
+        return []
 
 
-def get_relevant_books(user_message, limit=8):
-    tokens = [
-        token for token in re.findall(r"[A-Za-z0-9']+", user_message.lower())
-        if len(token) >= 3
-    ]
-    projection = {
-        "_id": 0,
-        "title": 1,
-        "author": 1,
-        "isbn": 1,
-        "price": 1,
-        "publisher": 1,
-        "year": 1
+INTENTS = load_intents()
+
+
+def detect_intent(user_message):
+    normalized_message = normalize_text(user_message)
+    if not normalized_message:
+        return None
+
+    message_tokens = set(normalized_message.split())
+    best_match = None
+    best_score = 0.0
+
+    for intent in INTENTS:
+        if intent.get("tag") == "fallback":
+            continue
+
+        patterns = intent.get("patterns", [])
+        for pattern in patterns:
+            normalized_pattern = normalize_text(pattern)
+            if not normalized_pattern:
+                continue
+
+            if normalized_pattern == normalized_message:
+                score = 2.0
+            elif normalized_pattern in normalized_message and len(normalized_pattern.split()) >= 2:
+                score = 1.1
+            else:
+                pattern_tokens = set(normalized_pattern.split())
+                if not pattern_tokens:
+                    continue
+                shared_tokens = len(message_tokens & pattern_tokens)
+                pattern_coverage = shared_tokens / len(pattern_tokens)
+                message_coverage = shared_tokens / len(message_tokens)
+
+                # Allow short queries like "need help" to match longer training patterns
+                # such as "i need help" when most user words are covered.
+                if (
+                    (pattern_coverage >= 0.8 and shared_tokens >= 2) or
+                    (len(message_tokens) <= 3 and message_coverage >= 0.9 and shared_tokens >= 2)
+                ):
+                    score = max(pattern_coverage, message_coverage)
+                else:
+                    score = 0
+
+            if score > best_score:
+                best_score = score
+                best_match = intent
+
+    if best_match and best_score >= 0.75:
+        return best_match
+
+    return None
+
+
+def get_intent_reply(intent):
+    responses = intent.get("responses", [])
+    if responses:
+        return random.choice(responses)
+    return None
+
+
+def get_intent_by_tag(tag):
+    for intent in INTENTS:
+        if intent.get("tag") == tag:
+            return intent
+    return None
+
+
+def load_intent_model():
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(str(INTENT_MODEL_DIR), local_files_only=True)
+        config = AutoConfig.from_pretrained(str(INTENT_MODEL_DIR), local_files_only=True)
+        model = DistilBertForSequenceClassification(config)
+
+        if not INTENT_MODEL_WEIGHTS.exists():
+            raise FileNotFoundError(f"Weights not found: {INTENT_MODEL_WEIGHTS}")
+
+        state_dict = safetensors_load_file(str(INTENT_MODEL_WEIGHTS))
+        model.load_state_dict(state_dict, strict=False)
+
+        with INTENT_LABEL_ENCODER_FILE.open("rb") as file:
+            label_encoder = pickle.load(file)
+
+        labels = [str(label) for label in label_encoder.classes_]
+        model.eval()
+        print("✅ Intent model loaded successfully")
+        return tokenizer, model, labels
+    except Exception as exc:
+        print(f"⚠️ Intent model disabled: {exc}")
+        return None, None, []
+
+
+INTENT_TOKENIZER, INTENT_MODEL, INTENT_LABELS = load_intent_model()
+
+
+def detect_intent_with_model(user_message):
+    if not INTENT_TOKENIZER or not INTENT_MODEL or not INTENT_LABELS:
+        return None, 0.0
+
+    normalized_message = normalize_text(user_message)
+    if not normalized_message:
+        return None, 0.0
+
+    encoded = INTENT_TOKENIZER(
+        normalized_message,
+        truncation=True,
+        max_length=128,
+        return_tensors="pt"
+    )
+
+    with torch.no_grad():
+        logits = INTENT_MODEL(**encoded).logits
+        probabilities = torch.softmax(logits, dim=-1)[0]
+        confidence, predicted_index = torch.max(probabilities, dim=0)
+
+    predicted_idx = int(predicted_index.item())
+    if predicted_idx >= len(INTENT_LABELS):
+        return None, 0.0
+
+    predicted_tag = INTENT_LABELS[predicted_idx]
+    confidence_score = float(confidence.item())
+
+    if confidence_score < INTENT_MODEL_THRESHOLD or predicted_tag == "fallback":
+        return None, confidence_score
+
+    return get_intent_by_tag(predicted_tag), confidence_score
+
+
+def get_acknowledgement_reply(user_message):
+    normalized = normalize_text(user_message)
+    if normalized in {"ok", "okay", "k", "alright", "fine", "got it"}:
+        return "Great. If you want, I can also help you open your cart, add books, or checkout."
+    return None
+
+
+def is_cart_books_query(user_message):
+    normalized = normalize_text(user_message)
+    cart_phrases = {
+        "in my cart",
+        "my cart",
+        "cart items",
+        "books in my cart"
     }
+    if any(phrase in normalized for phrase in cart_phrases):
+        return True
 
-    if tokens:
-        pattern = "|".join(re.escape(token) for token in tokens[:6])
-        query = {
-            "$or": [
-                {"title": {"$regex": pattern, "$options": "i"}},
-                {"author": {"$regex": pattern, "$options": "i"}},
-                {"publisher": {"$regex": pattern, "$options": "i"}}
-            ]
-        }
-        books = list(books_collection.find(query, projection).limit(limit))
+    tokens = set(normalized.split())
+    return "cart" in tokens and bool(tokens & {"which", "what", "show", "list", "books", "items"})
+
+
+def is_purchased_books_query(user_message):
+    normalized = normalize_text(user_message)
+    purchase_phrases = {
+        "which books i buyed",
+        "which books i bought",
+        "what books i bought",
+        "my purchased books",
+        "books i purchased",
+        "books i ordered",
+        "order history"
+    }
+    if any(phrase in normalized for phrase in purchase_phrases):
+        return True
+
+    tokens = set(normalized.split())
+    return bool(tokens & {"bought", "buyed", "purchased", "ordered"}) and "books" in tokens
+
+
+def get_cart_books_reply():
+    if "email" in session:
+        items = list(cart_collection.find({"user_email": session["email"]}, {"title": 1, "_id": 0}))
     else:
-        books = []
+        items = session.get("guest_cart", [])
 
-    if not books:
-        books = list(books_collection.find({}, projection).limit(limit))
+    titles = [item.get("title") for item in items if item.get("title")]
+    if not titles:
+        return "Your cart is currently empty."
 
-    for book in books:
-        book["price"] = float(book.get("price", 449))
+    unique_titles = list(dict.fromkeys(titles))
+    preview = ", ".join(unique_titles[:8])
+    if len(unique_titles) > 8:
+        preview += ", ..."
 
-    return books
+    return f"These books are currently in your cart: {preview}."
 
 
-def get_user_chat_context():
+def get_purchased_books_reply():
     if "email" not in session:
-        return {
-            "user": "guest",
-            "is_logged_in": False,
-            "cart_items": session.get("guest_cart", []),
-            "cart_count": len(session.get("guest_cart", [])),
-            "recent_orders": [],
-            "purchased_titles": [],
-            "note": "Guest user. Ask them to login for account-specific order history."
-        }
+        return "Please login to view books you have purchased."
 
-    user_email = session["email"]
-    cart_items = list(cart_collection.find(
-        {"user_email": user_email},
-        {"_id": 0, "title": 1, "author": 1, "price": 1, "isbn": 1}
-    ))
+    orders = list(
+        orders_collection.find(
+            {"user_email": session["email"]},
+            {"items.title": 1, "_id": 0}
+        ).sort("created_at", -1).limit(10)
+    )
 
-    recent_orders = list(orders_collection.find(
-        {"user_email": user_email},
-        {"_id": 0, "items": 1, "total_amount": 1, "created_at": 1}
-    ).sort("created_at", -1).limit(5))
-
-    purchased_titles = []
-    for order in recent_orders:
+    titles = []
+    for order in orders:
         for item in order.get("items", []):
             title = item.get("title")
             if title:
-                purchased_titles.append(title)
+                titles.append(title)
 
-    # Preserve order while removing duplicates.
-    purchased_titles = list(dict.fromkeys(purchased_titles))
+    if not titles:
+        return "I could not find any purchased books in your order history yet."
 
-    return {
-        "user": session.get("user", "user"),
-        "is_logged_in": True,
-        "email": user_email,
-        "cart_items": cart_items,
-        "cart_count": len(cart_items),
-        "recent_orders": recent_orders,
-        "purchased_titles": purchased_titles,
-        "note": "Use this data for personalized cart/order answers."
+    unique_titles = list(dict.fromkeys(titles))
+    preview = ", ".join(unique_titles[:10])
+    if len(unique_titles) > 10:
+        preview += ", ..."
+
+    return f"You have purchased these books: {preview}."
+
+
+def extract_openrouter_reply(response):
+    response_data = response.json()
+    choices = response_data.get("choices")
+
+    if choices and isinstance(choices, list):
+        message = choices[0].get("message", {})
+        content = message.get("content")
+        if content:
+            return content
+
+    provider_error = response_data.get("error", {})
+    provider_message = provider_error.get("message") if isinstance(provider_error, dict) else None
+    if provider_message:
+        raise ValueError(provider_message)
+
+    raise ValueError("LLM response did not contain choices")
+
+
+def build_system_prompt(matched_intent=None):
+    base_prompt = "You are BookGenie, a helpful bookstore assistant. Respond clearly and concisely."
+    if matched_intent:
+        return (
+            f"{base_prompt} "
+            f"The detected intent is '{matched_intent.get('tag', 'unknown')}'. "
+            f"Answer in a way that matches that intent and stays focused on the bookstore context."
+        )
+    return base_prompt
+
+
+def ask_openrouter(user_message, system_prompt):
+    if not OPENROUTER_API_KEY:
+        raise ValueError("OPENROUTER_API_KEY is not configured")
+
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
     }
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ]
+    }
+
+    response = requests.post(url, json=payload, headers=headers, timeout=30)
+    return extract_openrouter_reply(response)
+
+
+def ask_openai(user_message, system_prompt):
+    if not OPENAI_API_KEY:
+        raise ValueError("OPENAI_API_KEY is not configured")
+
+    # Supports latest OpenAI SDK while keeping backward compatibility.
+    if hasattr(openai, "OpenAI"):
+        client = openai.OpenAI(api_key=OPENAI_API_KEY)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ]
+        )
+        return response.choices[0].message.content
+
+    openai.api_key = OPENAI_API_KEY
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ]
+    )
+    return response.choices[0].message.content
+
+
+def get_llm_reply_with_failover(user_message, matched_intent=None):
+    system_prompt = build_system_prompt(matched_intent)
+    errors = []
+
+    provider_order = ["openrouter", "openai"] if USE_OPENROUTER else ["openai", "openrouter"]
+
+    for provider in provider_order:
+        try:
+            if provider == "openrouter":
+                return ask_openrouter(user_message, system_prompt)
+            return ask_openai(user_message, system_prompt)
+        except Exception as exc:
+            errors.append(f"{provider}: {exc}")
+
+    raise RuntimeError(" | ".join(errors) if errors else "No LLM provider available")
+
+
+def get_current_page():
+    page_raw = request.args.get("page", "1")
+    try:
+        return max(int(page_raw), 1)
+    except (TypeError, ValueError):
+        return 1
+
+
+def get_catalog_filters_from_request():
+    return {
+        "title": request.args.get("title", "").strip(),
+        "author": request.args.get("author", "").strip(),
+        "year": request.args.get("year", "").strip(),
+        "publisher": request.args.get("publisher", "").strip(),
+    }
+
+
+def build_catalog_filter(search_query="", title="", author="", year="", publisher=""):
+    conditions = []
+
+    if search_query:
+        conditions.append({
+            "$or": [
+                {"title": {"$regex": search_query, "$options": "i"}},
+                {"author": {"$regex": search_query, "$options": "i"}}
+            ]
+        })
+
+    if title:
+        conditions.append({"title": {"$regex": title, "$options": "i"}})
+    if author:
+        conditions.append({"author": {"$regex": author, "$options": "i"}})
+    if year:
+        conditions.append({"year": {"$regex": year, "$options": "i"}})
+    if publisher:
+        conditions.append({"publisher": {"$regex": publisher, "$options": "i"}})
+
+    if not conditions:
+        return {}
+    if len(conditions) == 1:
+        return conditions[0]
+    return {"$and": conditions}
+
+
+def get_page_numbers(page, total_pages, window_size=5):
+    window_size = max(window_size, 1)
+    half = window_size // 2
+
+    start_page = max(page - half, 1)
+    end_page = min(start_page + window_size - 1, total_pages)
+
+    if end_page - start_page + 1 < window_size:
+        start_page = max(end_page - window_size + 1, 1)
+
+    return list(range(start_page, end_page + 1))
 
 # ===============================
 # AUTO INCREMENT FUNCTION
@@ -205,7 +507,28 @@ def logout():
 # ===============================
 @app.route("/")
 def home():
-    books = list(books_collection.find({}, {"_id": 0}).limit(50))
+    page = get_current_page()
+    filters = get_catalog_filters_from_request()
+    book_filter = build_catalog_filter(
+        title=filters["title"],
+        author=filters["author"],
+        year=filters["year"],
+        publisher=filters["publisher"]
+    )
+
+    total_books = books_collection.count_documents(book_filter)
+    total_pages = max((total_books + BOOKS_PER_PAGE - 1) // BOOKS_PER_PAGE, 1)
+
+    if page > total_pages:
+        page = total_pages
+
+    skip = (page - 1) * BOOKS_PER_PAGE
+    books = list(
+        books_collection.find(book_filter, {"_id": 0})
+        .skip(skip)
+        .limit(BOOKS_PER_PAGE)
+    )
+
     user = session.get("user")
     is_guest = user is None
 
@@ -213,7 +536,18 @@ def home():
         "index.html",
         books=books,
         user=user,
-        is_guest=is_guest
+        is_guest=is_guest,
+        page=page,
+        total_pages=total_pages,
+        has_prev=page > 1,
+        has_next=page < total_pages,
+        page_numbers=get_page_numbers(page, total_pages),
+        is_search=False,
+        search_query="",
+        title_filter=filters["title"],
+        author_filter=filters["author"],
+        year_filter=filters["year"],
+        publisher_filter=filters["publisher"]
     )
 
 # ===============================
@@ -227,23 +561,55 @@ def book_details(isbn):
 
 @app.route("/search", methods=["GET"])
 def search():
-    query = request.args.get("q", "")  # URL me ?q=search_term
+    query = request.args.get("q", "").strip()  # URL me ?q=search_term
     if not query:
         return redirect(url_for("home"))
 
+    page = get_current_page()
+    filters = get_catalog_filters_from_request()
+    book_filter = build_catalog_filter(
+        search_query=query,
+        title=filters["title"],
+        author=filters["author"],
+        year=filters["year"],
+        publisher=filters["publisher"]
+    )
+
+    total_books = books_collection.count_documents(book_filter)
+    total_pages = max((total_books + BOOKS_PER_PAGE - 1) // BOOKS_PER_PAGE, 1)
+
+    if page > total_pages:
+        page = total_pages
+
+    skip = (page - 1) * BOOKS_PER_PAGE
+
     # case-insensitive search on title or author
-    books = list(books_collection.find(
-        {"$or": [
-            {"title": {"$regex": query, "$options": "i"}},
-            {"author": {"$regex": query, "$options": "i"}}
-        ]},
-        {"_id": 0}
-    ).limit(50))
+    books = list(
+        books_collection.find(book_filter, {"_id": 0})
+        .skip(skip)
+        .limit(BOOKS_PER_PAGE)
+    )
 
     user = session.get("user")
     is_guest = user is None
 
-    return render_template("index.html", books=books, user=user, is_guest=is_guest)
+    return render_template(
+        "index.html",
+        books=books,
+        user=user,
+        is_guest=is_guest,
+        page=page,
+        total_pages=total_pages,
+        has_prev=page > 1,
+        has_next=page < total_pages,
+        page_numbers=get_page_numbers(page, total_pages),
+        is_search=True,
+        search_query=query,
+        title_filter=filters["title"],
+        author_filter=filters["author"],
+        year_filter=filters["year"],
+        publisher_filter=filters["publisher"]
+    )
 # ===============================
 # CART PAGE
 # ===============================
@@ -379,90 +745,50 @@ def buy_cart():
 def chatbot_api():
 
     data = request.get_json(silent=True) or {}
-    user_message = (data.get("message") or "").strip()
+    user_message = data.get("message", "")
 
-    if not user_message:
-        return jsonify({"reply": "Please type something.", "stopped": False}), 400
+    ack_reply = get_acknowledgement_reply(user_message)
+    if ack_reply:
+        return jsonify({"reply": ack_reply, "intent": "acknowledgement"})
 
-    chat_key = get_chat_key()
+    if is_cart_books_query(user_message):
+        return jsonify({"reply": get_cart_books_reply(), "intent": "view_cart"})
 
-    with chat_lock:
-        chat_stop_flags[chat_key] = False
+    if is_purchased_books_query(user_message):
+        return jsonify({"reply": get_purchased_books_reply(), "intent": "order_status"})
 
-    books_context = get_relevant_books(user_message)
-    user_context = get_user_chat_context()
+    # Priority: trained model intent -> heuristic intent -> LLM fallback
+    model_intent, model_confidence = detect_intent_with_model(user_message)
+    heuristic_intent = detect_intent(user_message)
 
-    context_message = {
-        "user_context": user_context,
-        "relevant_books": books_context
-    }
+    if model_intent and heuristic_intent:
+        if model_intent.get("tag") != heuristic_intent.get("tag") and model_confidence < 0.9:
+            matched_intent = heuristic_intent
+        else:
+            matched_intent = model_intent
+    else:
+        matched_intent = model_intent or heuristic_intent
 
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are BookGenie AI assistant for a bookstore app. "
-                "Use the provided context to answer questions about books, cart, and orders. "
-                "If user asks account-specific info and not logged in, ask them to login. "
-                "Do not invent cart/order data not present in context. "
-                "Keep replies short, clear, and user-friendly."
-            )
-        },
-        {
-            "role": "system",
-            "content": f"Context data: {context_message}"
-        },
-        {
-            "role": "user",
-            "content": user_message
-        }
-    ]
+    if matched_intent:
+        intent_reply = get_intent_reply(matched_intent)
+        if intent_reply:
+            return jsonify({
+                "reply": intent_reply,
+                "intent": matched_intent.get("tag", "")
+            })
 
     try:
-        with chat_lock:
-            if chat_stop_flags.get(chat_key):
-                return jsonify({"reply": "Stopped.", "stopped": True})
-
-        if USE_OPENROUTER:
-            url = "https://openrouter.ai/api/v1/chat/completions"
-            headers = {
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "model": "gpt-4o-mini",
-                "messages": messages
-            }
-
-            response = requests.post(url, json=payload, headers=headers, timeout=45)
-            response.raise_for_status()
-            body = response.json()
-            reply = body.get("choices", [{}])[0].get("message", {}).get("content", "No response")
-
-        else:
-            openai.api_key = OPENAI_API_KEY
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=messages
-            )
-            reply = response.choices[0].message.content
-
-        with chat_lock:
-            if chat_stop_flags.get(chat_key):
-                return jsonify({"reply": "Stopped.", "stopped": True})
-
+        reply = get_llm_reply_with_failover(user_message, matched_intent)
     except Exception as e:
-        reply = f"Error: {str(e)}"
+        if matched_intent:
+            reply = get_intent_reply(matched_intent) or f"Error: {str(e)}"
+        else:
+            reply = "I am having trouble reaching the AI service right now. Please try again in a moment."
 
-    return jsonify({"reply": reply, "stopped": False})
-
-
-@app.route("/api/chatbot/stop", methods=["POST"])
-def chatbot_stop():
-    chat_key = get_chat_key()
-    with chat_lock:
-        chat_stop_flags[chat_key] = True
-    return jsonify({"success": True, "message": "Chat stopped"})
+    response_data = {"reply": reply}
+    if matched_intent:
+        response_data["intent"] = matched_intent.get("tag", "")
+    return jsonify(response_data)
 
 # ===============================
 if __name__ == "__main__":

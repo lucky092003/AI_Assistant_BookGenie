@@ -1,0 +1,11 @@
+flask
+flask-cors
+pymongo
+python-dotenv
+requests
+openai
+werkzeug
+scikit-learn==1.6.1
+torch
+transformers
+safetensors

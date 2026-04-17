@@ -133,6 +133,13 @@ async function updateCartCount() {
 document.addEventListener("DOMContentLoaded", updateCartCount);
 
 // ===============================
+// CHAT AUDIO CONTROLS
+// ===============================
+let speakerEnabled = false;
+let isListening = false;
+let micAlwaysOn = false;
+
+// ===============================
 // RECALCULATE TOTAL (Without Reload)
 // ===============================
 function recalculateTotal() {
@@ -161,9 +168,6 @@ function toggleChat() {
         chatWindow.style.display === "flex" ? "none" : "flex";
 }
 
-    let activeChatController = null;
-    let activeLoadingId = null;
-
 // ===============================
 // SEND MESSAGE
 // ===============================
@@ -176,16 +180,10 @@ async function sendMessage() {
     const text = input.value.trim();
     if (!text) return;
 
-    if (activeChatController) {
-        activeChatController.abort();
-    }
-    activeChatController = new AbortController();
-
     body.innerHTML += `<div class="message user">${text}</div>`;
     input.value = "";
 
     const loadingId = "load-" + Date.now();
-    activeLoadingId = loadingId;
     body.innerHTML += `<div class="message bot" id="${loadingId}">Genie thinking... 🧞‍♂️</div>`;
     body.scrollTop = body.scrollHeight;
 
@@ -193,36 +191,23 @@ async function sendMessage() {
         const response = await fetch("/api/chatbot", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: text }),
-            signal: activeChatController.signal
+            body: JSON.stringify({ message: text })
         });
 
         const data = await response.json();
         const botMsg = document.getElementById(loadingId);
 
         if (botMsg) {
-            if (data.stopped) {
-                botMsg.innerText = "Stopped.";
-            } else {
-                botMsg.innerText = data.reply || "Hmm... no reply 🤔";
+            botMsg.innerText = data.reply || "Hmm... no reply 🤔";
 
-                if ("speechSynthesis" in window && data.reply) {
-                    speakText(data.reply);
-                }
+            if (speakerEnabled && "speechSynthesis" in window && data.reply) {
+                speakText(data.reply);
             }
         }
 
     } catch (error) {
         const botMsg = document.getElementById(loadingId);
-        if (botMsg) {
-            botMsg.innerText =
-                error.name === "AbortError"
-                    ? "Stopped."
-                    : "Magic lamp flickering... Try again ✨";
-        }
-    } finally {
-        activeChatController = null;
-        activeLoadingId = null;
+        if (botMsg) botMsg.innerText = "Magic lamp flickering... Try again ✨";
     }
 
     body.scrollTop = body.scrollHeight;
@@ -248,83 +233,120 @@ function speakText(text) {
 // ===============================
 let recognition;
 
-function startVoice() {
-    if (!("webkitSpeechRecognition" in window)) {
-        showToast("Use Chrome for voice 🎤", false);
-        return;
-    }
-
-    recognition = new webkitSpeechRecognition();
-    recognition.lang = "en-IN";
-    recognition.continuous = false;
-    recognition.interimResults = false;
-
-    recognition.start();
-
-    const micBtn = document.getElementById("voiceBtn");
-    if (micBtn) {
-        micBtn.classList.add("listening");
-        micBtn.innerText = "🎙️";
-    }
-
-    recognition.onresult = function (event) {
-        const transcript = event.results[0][0].transcript;
-        document.getElementById("chatInput").value = transcript;
-        sendMessage();
-    };
-
-    recognition.onend = function () {
-        if (micBtn) {
-            micBtn.classList.remove("listening");
-            micBtn.innerText = "🎤";
-        }
-    };
+function getSpeechRecognition() {
+    return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
-// ===============================
-// STOP CHAT (TEXT + VOICE + SPEECH)
-// ===============================
-async function stopChat() {
-    if (recognition) {
-        try { recognition.stop(); } catch (e) { console.error(e); }
+function updateAudioButtonState() {
+    const voiceBtn = document.getElementById("voiceBtn");
+    const speakerToggleBtn = document.getElementById("speakerToggleBtn");
+
+    if (voiceBtn) {
+        voiceBtn.classList.toggle("is-on", isListening);
+        voiceBtn.classList.toggle("is-off", !isListening);
+        voiceBtn.classList.toggle("listening", isListening);
+        voiceBtn.title = isListening ? "Mic is on. Tap to stop." : "Mic is off";
+        voiceBtn.innerText = isListening ? "🎙️" : "🎤";
     }
 
-    if ("speechSynthesis" in window) {
+    if (speakerToggleBtn) {
+        speakerToggleBtn.classList.toggle("is-on", speakerEnabled);
+        speakerToggleBtn.classList.toggle("is-off", !speakerEnabled);
+        speakerToggleBtn.title = speakerEnabled ? "Speaker is on" : "Speaker is off";
+        speakerToggleBtn.innerText = speakerEnabled ? "🔊" : "🔈";
+    }
+}
+
+function toggleSpeaker() {
+    speakerEnabled = !speakerEnabled;
+    updateAudioButtonState();
+
+    if (!speakerEnabled && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
     }
 
-    if (activeChatController) {
-        activeChatController.abort();
-        activeChatController = null;
-    }
-
-    try {
-        await fetch("/api/chatbot/stop", { method: "POST" });
-    } catch (e) {
-        console.error(e);
-    }
-
-    if (activeLoadingId) {
-        const botMsg = document.getElementById(activeLoadingId);
-        if (botMsg) botMsg.innerText = "Stopped.";
-        activeLoadingId = null;
-    }
-
-    const micBtn = document.getElementById("voiceBtn");
-    if (micBtn) {
-        micBtn.classList.remove("listening");
-        micBtn.innerText = "🎤";
-    }
-
-    showToast("Chat stopped");
+    showToast(speakerEnabled ? "Speaker enabled" : "Speaker disabled", speakerEnabled);
 }
 
-document.addEventListener("DOMContentLoaded", function () {
-    const stopBtn = document.getElementById("stopBtn");
-    if (stopBtn) {
-        stopBtn.addEventListener("click", stopChat);
+function toggleVoiceInput() {
+    if (micAlwaysOn) {
+        micAlwaysOn = false;
+        if (recognition) {
+            recognition.stop();
+        }
+        isListening = false;
+        updateAudioButtonState();
+        showToast("Mic turned off", false);
+        return;
     }
-});
+
+    micAlwaysOn = true;
+    showToast("Mic turned on. I am listening.", true);
+    startVoice();
+}
+
+function startVoice() {
+    const SpeechRecognitionAPI = getSpeechRecognition();
+    if (!SpeechRecognitionAPI) {
+        showToast("Voice input not supported in this browser.", false);
+        return;
+    }
+
+    if (recognition) {
+        recognition.stop();
+    }
+
+    recognition = new SpeechRecognitionAPI();
+    recognition.lang = "en-IN";
+    recognition.continuous = true;
+    recognition.interimResults = false;
+
+    isListening = true;
+    updateAudioButtonState();
+
+    recognition.start();
+
+    recognition.onresult = function (event) {
+        const transcript = event?.results?.[0]?.[0]?.transcript || "";
+        if (!transcript) {
+            showToast("Could not hear clearly. Please try again.", false);
+            return;
+        }
+
+        const input = document.getElementById("chatInput");
+        if (input) {
+            input.value = transcript;
+        }
+        sendMessage();
+    };
+
+    recognition.onerror = function (event) {
+        const errorMessage = event?.error || "voice-error";
+        if (errorMessage === "not-allowed") {
+            showToast("Microphone permission denied. Please allow mic access.", false);
+        } else if (errorMessage === "no-speech") {
+            showToast("No speech detected. Please try again.", false);
+        } else {
+            showToast("Voice error: " + errorMessage, false);
+        }
+    };
+
+    recognition.onend = function () {
+        if (micAlwaysOn) {
+            setTimeout(() => {
+                if (micAlwaysOn) {
+                    startVoice();
+                }
+            }, 150);
+            return;
+        }
+
+        isListening = false;
+        updateAudioButtonState();
+    };
+}
+
+document.addEventListener("DOMContentLoaded", updateAudioButtonState);
 
 // ===============================
 // TOAST SYSTEM (Improved)
