@@ -6,62 +6,102 @@
 </head>
 <body>
 
+<!-- BREADCRUMB -->
+<div class="breadcrumb">
+    <a href="/">Home</a>
+    <span class="separator">›</span>
+    <span>Shopping Cart</span>
+</div>
+
 <div class="cart-page">
-    <h1>🛒 Your Cart</h1>
+    <div class="cart-header">
+        <h1>🛒 Shopping Cart</h1>
+        <p class="cart-subtitle">Review and manage your items</p>
+    </div>
 
     {% if items %}
+        <div class="cart-container">
+            <!-- LEFT: CART ITEMS -->
+            <div class="cart-items-section">
+                <div class="cart-list" id="cartList">
+                    {% for item in items %}
+                    <div class="cart-row" data-id="{{ item._id|string if item._id else item.isbn }}">
+                        <div class="cart-item-image">
+                            <img src="{{ item.image_url if item.image_url else 'https://via.placeholder.com/120x160?text=No+Cover' }}"
+                                 alt="{{ item.title }}"
+                                 class="book-cover">
+                        </div>
 
-        <div class="cart-list" id="cartList">
+                        <div class="cart-item-info">
+                            <h3 class="item-title">{{ item.title }}</h3>
+                            <p class="item-author">by {{ item.author }}</p>
+                            <p class="item-isbn">ISBN: {{ item.isbn }}</p>
+                            <p class="item-price">₹{{ item.price }}</p>
+                        </div>
 
-            {% for item in items %}
-            <div class="cart-row"
-                 data-id="{{ item._id|string if item._id else item.isbn }}">
-
-                <div class="cart-image">
-                    <img src="{{ item.image_url if item.image_url else 'https://via.placeholder.com/150x200?text=No+Cover' }}"
-                         alt="{{ item.title }}">
-                </div>
-
-                <div class="cart-details">
-                    <h3>{{ item.title }}</h3>
-                    <p>{{ item.author }}</p>
-                    <p>ISBN: {{ item.isbn }}</p>
-                    <p class="price">Price: ₹{{ item.price }}</p>
-
-                    <button class="remove-btn"
-                        onclick="removeCartItem('{{ item._id|string if item._id else item.isbn }}')">
-                        ❌ Remove
-                    </button>
+                        <div class="cart-item-actions">
+                            <button class="remove-btn"
+                                onclick="removeCartItem('{{ item._id|string if item._id else item.isbn }}')"
+                                title="Remove from cart">
+                                Remove
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
                 </div>
             </div>
-            {% endfor %}
 
-        </div>
+            <!-- RIGHT: ORDER SUMMARY -->
+            <div class="order-summary">
+                <div class="summary-card">
+                    <h3>Order Summary</h3>
+                    
+                    <div class="summary-row">
+                        <span>Subtotal</span>
+                        <span>₹{{ total }}</span>
+                    </div>
 
-        <!-- TOTAL -->
-        <div class="cart-total">
-            <h2>Total: ₹{{ total }}</h2>
-        </div>
+                    <div class="summary-row">
+                        <span>Shipping</span>
+                        <span class="shipping-cost">Free</span>
+                    </div>
 
-        <!-- ACTION BUTTONS -->
-        <div class="cart-actions">
+                    <div class="summary-row">
+                        <span>Tax (estimated)</span>
+                        <span>₹0</span>
+                    </div>
 
-            <button class="buy-btn" onclick="buyCart()">
-                💳 Buy Now
-            </button>
+                    <div class="summary-divider"></div>
 
-            <button class="clear-btn" onclick="clearCart()">
-                🗑 Clear Cart
-            </button>
+                    <div class="summary-total">
+                        <span>Total</span>
+                        <span class="total-price">₹{{ total }}</span>
+                    </div>
 
+                    <!-- ACTION BUTTONS -->
+                    <div class="cart-actions">
+                        <button class="buy-btn" onclick="buyCart()">
+                            Proceed to Checkout
+                        </button>
+
+                        <button class="clear-btn" onclick="clearCart()">
+                            Clear Cart
+                        </button>
+                    </div>
+
+                    <a href="/" class="continue-shopping">← Continue Shopping</a>
+                </div>
+            </div>
         </div>
 
     {% else %}
-        <p class="empty-cart">Your cart is empty 😢</p>
+        <div class="empty-cart-container">
+            <div class="empty-cart-icon">📚</div>
+            <h2>Your cart is empty</h2>
+            <p>Discover amazing books and add them to your cart</p>
+            <a href="/" class="browse-books-btn">Browse Books</a>
+        </div>
     {% endif %}
-
-    <br>
-    <a href="/" class="back-btn">⬅ Continue Shopping</a>
 </div>
 
 <script src="{{ url_for('static', filename='script.js') }}"></script>

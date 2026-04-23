@@ -53,7 +53,7 @@ counters_collection = db["counters"]
 
 users_collection.create_index("email", unique=True)
 
-print("✅ MongoDB Connected Successfully")
+print("MongoDB Connected Successfully")
 
 # ===============================
 # CHATBOT INTENTS
@@ -158,10 +158,10 @@ def load_intent_model():
 
         labels = [str(label) for label in label_encoder.classes_]
         model.eval()
-        print("✅ Intent model loaded successfully")
+        print("Intent model loaded successfully")
         return tokenizer, model, labels
     except Exception as exc:
-        print(f"⚠️ Intent model disabled: {exc}")
+        print(f"Intent model disabled: {exc}")
         return None, None, []
 
 
